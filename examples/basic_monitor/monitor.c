@@ -65,6 +65,7 @@ static uint32_t print_delay = 1000000;
 static uint32_t total_packets = 0;
 static uint64_t last_cycle;
 static uint64_t cur_cycles;
+static uint16_t destination;
 
 /* shared data structure containing host port info */
 extern struct port_info *ports;
@@ -78,6 +79,7 @@ usage(const char *progname) {
         printf("%s [EAL args] -- [NF_LIB args] -- -p <print_delay>\n", progname);
         printf("%s -F <CONFIG_FILE.json> [EAL args] -- [NF_LIB args] -- [NF args]\n\n", progname);
         printf("Flags:\n");
+	printf(" - `-d DST`: Destination Service ID to forward to\n");
         printf(" - `-p <print_delay>`: number of packets between each print, e.g. `-p 1` prints every packets.\n");
 }
 
@@ -87,16 +89,23 @@ usage(const char *progname) {
 static int
 parse_app_args(int argc, char *argv[], const char *progname) {
         int c;
+	int dst_flag = 0;
 
-        while ((c = getopt(argc, argv, "p:")) != -1) {
+        while ((c = getopt(argc, argv, "d:p:")) != -1) {
                 switch (c) {
+			case 'd':
+                                destination = strtoul(optarg, NULL, 10);
+                                dst_flag = 1;
+                                break;
                         case 'p':
                                 print_delay = strtoul(optarg, NULL, 10);
                                 RTE_LOG(INFO, APP, "print_delay = %d\n", print_delay);
                                 break;
                         case '?':
                                 usage(progname);
-                                if (optopt == 'p')
+				if (optopt == 'd')
+                                        RTE_LOG(INFO, APP, "Option -%c requires an argument.\n", optopt);
+                                else if (optopt == 'p')
                                         RTE_LOG(INFO, APP, "Option -%c requires an argument.\n", optopt);
                                 else if (isprint(optopt))
                                         RTE_LOG(INFO, APP, "Unknown option `-%c'.\n", optopt);
@@ -107,6 +116,10 @@ parse_app_args(int argc, char *argv[], const char *progname) {
                                 usage(progname);
                                 return -1;
                 }
+        }
+	if (!dst_flag) {
+                RTE_LOG(INFO, APP, "Firewall NF requires a destination NF with the -d flag.\n");
+                return -1;
         }
         return optind;
 }
@@ -168,7 +181,7 @@ packet_handler(struct rte_mbuf *pkt, struct onvm_pkt_meta *meta,
         }
 
         meta->action = ONVM_NF_ACTION_OUT;
-        meta->destination = pkt->port;
+        meta->destination = destination;//pkt->port;
 
         if (onvm_pkt_swap_src_mac_addr(pkt, meta->destination, ports) != 0) {
                 RTE_LOG(INFO, APP, "ERROR: Failed to swap src mac with dst mac!\n");
